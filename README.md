@@ -1,1 +1,1 @@
-# AWS_EKS_CN
+Recording all important info about AWS EKS CN.
