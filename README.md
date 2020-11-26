@@ -22,7 +22,7 @@ eksctl utils associate-iam-oidc-provider \
 ```
 aws iam create-policy \
     --policy-name <policy name> \
-    --policy-document file://iam-policy.json
+    --policy-document file://iam-policy-cn.json
 ```
 - Note the arn that the command returned and will use in next step
 ### Create service account
