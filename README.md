@@ -7,6 +7,15 @@ eksctl create cluster --name <cluster-name> --version 1.17 --region <region> --n
 ```
 ## Set up alb
 - The latest version of AWS alb has a new feature that supporting one alb map many services, we will show it later.
+- We need internal alb, so we need add tag to our subnets like this
+```
+kubernetes.io/role/internal-elb   1
+```
+- If you want to create a public one, set it like this
+```
+kubernetes.io/role/elb   1
+```
+###
 ### Repo download
 ```
 Download the repo, cd to right path.
