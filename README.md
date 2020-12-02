@@ -222,4 +222,65 @@ kubectl delete deployment.apps/deployment-2048 service/deployment-2048 horizonta
 ```
 
 ## Auto-scaler
+### Install auto-scaler
+```
+curl -o cluster-autoscaler-autodiscover.yaml https://raw.githubusercontent.com/kubernetes/autoscaler/master/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-autodiscover.yaml
+```
+### Prepare image of ac
+```
+sudo docker pull k8s.gcr.io/autoscaling/cluster-autoscaler:v1.17.4
 
+Add tag then push it onto ECR or Dockerhub
+
+704567433200.dkr.ecr.cn-northwest-1.amazonaws.com.cn/management:cluster-autoscaler-v1.17.4
+rogerhc/aws-resources:cluster-autoscaler-v1.17.4
+```
+### Update cluster-autoscaler-autodiscover.yaml
+```
+ containers:
+              #- image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.17.4
+              #- image: 704567433200.dkr.ecr.cn-northwest-1.amazonaws.com.cn/management:cluster-autoscaler-v1.17.4
+        - image: rogerhc/aws-resources:cluster-autoscaler-v1.17.4
+          name: cluster-autoscaler
+          resources:
+            limits:
+              cpu: 100m
+              memory: 300Mi
+            requests:
+              cpu: 100m
+              memory: 300Mi
+          command:
+            - ./cluster-autoscaler
+            - --v=4
+            - --stderrthreshold=info
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/{cluster-name}
+            - --balance-similar-node-groups
+            - --skip-nodes-with-system-pods=false
+            - --aws-use-static-instance-list=true
+```
+### Apply for it
+```
+kubectl apply -f cluster-autoscaler-autodiscover.yaml
+kubectl -n kube-system annotate deployment.apps/cluster-autoscaler cluster-autoscaler.kubernetes.io/safe-to-evict="false"
+```
+### Error Info
+```
+Last State:     Terminated
+      Reason:       ContainerCannotRun
+      Message:      OCI runtime create failed: container_linux.go:370: starting container process caused: exec: "./cluster-autoscaler": stat ./cluster-autoscaler: no such file or directory: unknown
+      Exit Code:    127
+
+Events:
+  Type     Reason     Age                From                                                       Message
+  ----     ------     ----               ----                                                       -------
+  Normal   Scheduled  65s                default-scheduler                                          Successfully assigned kube-system/cluster-autoscaler-fdf5d4966-z2v2n to ip-10-64-149-205.cn-northwest-1.compute.internal
+  Normal   Pulling    12s (x4 over 64s)  kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Pulling image "rogerhc/aws-resources:cluster-autoscaler-v1.17.4"
+  Normal   Pulled     9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Successfully pulled image "rogerhc/aws-resources:cluster-autoscaler-v1.17.4"
+  Normal   Created    9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Created container cluster-autoscaler
+  Warning  Failed     9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Error: failed to start container "cluster-autoscaler": Error response from daemon: OCI runtime create failed: container_linux.go:370: starting container process caused: exec: "./cluster-autoscaler": stat ./cluster-autoscaler: no such file or directory: unknown
+  Warning  BackOff    5s (x3 over 24s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Back-off restarting failed container
+
+```
