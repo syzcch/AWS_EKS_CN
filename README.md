@@ -94,5 +94,132 @@ kubectl delete -f 2048_full.yaml
 ```
 
 ## Install Monitoring
+### Install Helm
+```
+export PATH=/usr/local/bin:$PATH
+curl -sSL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+
+helm repo list
+helm repo update
+helm repo add stable https://burdenbear.github.io/kube-charts-mirror/
+```
+### Install Prometheus
+```
+kubectl create namespace prometheus
+
+helm install prometheus stable/prometheus \
+    --namespace prometheus \
+    --set alertmanager.persistentVolume.storageClass="gp2",server.persistentVolume.storageClass="gp2"
+```
+### Install Grafana
+```
+kubectl create namespace grafana
+
+helm install grafana stable/grafana \
+    --namespace grafana \
+    --set persistence.storageClassName="gp2" \
+    --set adminPassword='EKS!sAWSome' \
+    --set datasources."datasources\.yaml".apiVersion=1 \
+    --set datasources."datasources\.yaml".datasources[0].name=Prometheus \
+    --set datasources."datasources\.yaml".datasources[0].type=prometheus \
+    --set datasources."datasources\.yaml".datasources[0].url=http://prometheus-server.prometheus.svc.cluster.local \
+    --set datasources."datasources\.yaml".datasources[0].access=proxy \
+    --set datasources."datasources\.yaml".datasources[0].isDefault=true \
+    --set service.type=LoadBalancer 
+```
+- Then check the result
+```
+kubectl get service -n grafana
+
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get service -n grafana
+NAME      TYPE           CLUSTER-IP      EXTERNAL-IP                                                                       PORT(S)        AGE
+grafana   LoadBalancer   172.20.38.143   a88ebb6e72c59408981150776a39c45d-1889022542.cn-northwest-1.elb.amazonaws.com.cn   80:30880/TCP   8d
+```
+- Log into the portal
+```
+Copy the EXTERNAL-IP and paste it on browser.
+Email or username = admin
+Password = EKS!sAWSome
+```
+### Set up a panel
+```
+左侧面板点击' + '，选择' Import '
+Grafana.com Dashboard下输6417，点击“Load”
+输入Kubernetes Pods Monitoring作为Dashboard名称
+点击change，设置uid
+prometheus data source下拉框中选择prometheus
+点击' Import '
+```
+### Clean env if you need it
+```
+helm uninstall grafana --namespace grafana
+helm uninstall prometheus --namespace prometheus
+kubectl delete ns grafana
+kubectl delete ns prometheus
+```
 
 ## Intall HPA
+### Install metric-server
+```
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.3.6/components.yaml
+kubectl get deployment metrics-server -n kube-system
+
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get deployment metrics-server -n kube-system
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+metrics-server   1/1     1            1           7d22h
+```
+### Set up limit for pod
+```
+kubectl set resources deployment deployment-2048 --limits=cpu=50m,memory=64Mi
+```
+### Set up auto-scaling policy
+```
+kubectl autoscale deployment deployment-2048 --cpu-percent=20 --min=1 --max=6
+```
+### Monitor it
+```
+kubectl top pod
+kubectl get hpa --watch
+```
+### Run test case
+- Check the number of pod for game-2048
+```
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get pods -ngame-2048
+NAME                               READY   STATUS    RESTARTS   AGE
+deployment-2048-79c4dc468c-8zmkl   1/1     Running   0          8d
+```
+- Run busy box
+```
+kubectl run -it --rm load-generator --image=busybox /bin/sh --generator=run-pod/v1
+
+while true; do wget -q -O- http://internal-k8s-game2048-ingress2-92554a9080-2098904851.cn-northwest-1.elb.amazonaws.com.cn/; done
+```
+- Check the hpa
+```
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get hpa -ngame-2048
+NAME              REFERENCE                    TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+deployment-2048   Deployment/deployment-2048   38%/10%   1         6         4          8d
+```
+- Check the number of pods again
+```
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get pods -ngame-2048
+NAME                               READY   STATUS    RESTARTS   AGE
+deployment-2048-79c4dc468c-8zmkl   1/1     Running   0          8d
+deployment-2048-79c4dc468c-kw7hr   1/1     Running   0          27s
+deployment-2048-79c4dc468c-mdhpd   1/1     Running   0          27s
+deployment-2048-79c4dc468c-qqnqb   1/1     Running   0          27s
+```
+- Stop the busy test
+- Check the number again
+```
+[ec2-user@ip-10-64-144-5 ~]$ kubectl get pods -ngame-2048
+NAME                               READY   STATUS    RESTARTS   AGE
+deployment-2048-79c4dc468c-8zmkl   1/1     Running   0          8d
+```
+### Clean env if you need it
+```
+kubectl delete deployment.apps/deployment-2048 service/deployment-2048 horizontalpodautoscaler.autoscaling/deployment-2048
+```
+
+## Auto-scaler
+
