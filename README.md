@@ -336,7 +336,10 @@ ip-10-64-149-205.cn-northwest-1.compute.internal   Ready    <none>   10d   v1.17
 ip-10-64-150-172.cn-northwest-1.compute.internal   Ready    <none>   14m   v1.17.12-eks-7684af
 ```
 ### Clean env if you need it
-
+```
+kubectl delete -f nginx.yaml
+kubectl delete -f cluster-autoscaler-autodiscover.yaml
+```
 ## Useful links
 ```
 https://www.eksworkshop.com/beginner/080_scaling/test_ca/
