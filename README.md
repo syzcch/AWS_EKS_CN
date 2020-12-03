@@ -240,7 +240,7 @@ rogerhc/aws-resources:cluster-autoscaler-v1.17.4
  containers:
               #- image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.17.4
               #- image: 704567433200.dkr.ecr.cn-northwest-1.amazonaws.com.cn/management:cluster-autoscaler-v1.17.4
-        - image: rogerhc/aws-resources:cluster-autoscaler-v1.17.4
+        - image: 048912060910.dkr.ecr.cn-northwest-1.amazonaws.com.cn/gcr/google_containers/autoscaling/cluster-autoscaler:v1.17.3
           name: cluster-autoscaler
           resources:
             limits:
@@ -266,21 +266,83 @@ rogerhc/aws-resources:cluster-autoscaler-v1.17.4
 kubectl apply -f cluster-autoscaler-autodiscover.yaml
 kubectl -n kube-system annotate deployment.apps/cluster-autoscaler cluster-autoscaler.kubernetes.io/safe-to-evict="false"
 ```
-### Error Info
+### Try to use it
+- Create a test service
 ```
-Last State:     Terminated
-      Reason:       ContainerCannotRun
-      Message:      OCI runtime create failed: container_linux.go:370: starting container process caused: exec: "./cluster-autoscaler": stat ./cluster-autoscaler: no such file or directory: unknown
-      Exit Code:    127
+cat <<EoF> nginx.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-to-scaleout
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        service: nginx
+        app: nginx
+    spec:
+      containers:
+      - image: nginx
+        name: nginx-to-scaleout
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 500m
+            memory: 512Mi
+EoF
 
-Events:
-  Type     Reason     Age                From                                                       Message
-  ----     ------     ----               ----                                                       -------
-  Normal   Scheduled  65s                default-scheduler                                          Successfully assigned kube-system/cluster-autoscaler-fdf5d4966-z2v2n to ip-10-64-149-205.cn-northwest-1.compute.internal
-  Normal   Pulling    12s (x4 over 64s)  kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Pulling image "rogerhc/aws-resources:cluster-autoscaler-v1.17.4"
-  Normal   Pulled     9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Successfully pulled image "rogerhc/aws-resources:cluster-autoscaler-v1.17.4"
-  Normal   Created    9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Created container cluster-autoscaler
-  Warning  Failed     9s (x4 over 61s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Error: failed to start container "cluster-autoscaler": Error response from daemon: OCI runtime create failed: container_linux.go:370: starting container process caused: exec: "./cluster-autoscaler": stat ./cluster-autoscaler: no such file or directory: unknown
-  Warning  BackOff    5s (x3 over 24s)   kubelet, ip-10-64-149-205.cn-northwest-1.compute.internal  Back-off restarting failed container
 
+kubectl apply -f nginx.yaml
+```
+- Set replicas for it
+```
+kubectl get node
+NAME                                               STATUS   ROLES    AGE   VERSION
+ip-10-64-149-205.cn-northwest-1.compute.internal   Ready    <none>   10d   v1.17.12-eks-7684af
+ip-10-64-150-172.cn-northwest-1.compute.internal   Ready    <none>   14m   v1.17.12-eks-7684af
+
+kubectl scale --replicas=10 deployment/nginx-to-scaleout
+```
+- Check logs 
+```
+kubectl get pods -l app=nginx -o wide --watch
+
+kubectl -n kube-system logs -f deployment/cluster-autoscaler
+```
+- Check nodes
+```
+Waiting for a moment
+kubectl get node
+NAME                                               STATUS   ROLES    AGE     VERSION
+ip-10-64-149-205.cn-northwest-1.compute.internal   Ready    <none>   10d     v1.17.12-eks-7684af
+ip-10-64-150-172.cn-northwest-1.compute.internal   Ready    <none>   4m10s   v1.17.12-eks-7684af
+ip-10-64-150-87.cn-northwest-1.compute.internal    Ready    <none>   10d     v1.17.12-eks-7684af
+```
+- Scale down test
+```
+kubectl scale --replicas=1 deployment/nginx-to-scaleout
+
+waiting for more than 10 mins
+
+kubectl get node
+NAME                                               STATUS   ROLES    AGE   VERSION
+ip-10-64-149-205.cn-northwest-1.compute.internal   Ready    <none>   10d   v1.17.12-eks-7684af
+ip-10-64-150-172.cn-northwest-1.compute.internal   Ready    <none>   14m   v1.17.12-eks-7684af
+```
+### Clean env if you need it
+
+## Useful links
+```
+https://www.eksworkshop.com/beginner/080_scaling/test_ca/
+https://github.com/wangyu7988/I-Day/tree/master/Devops/EKSworkshop
+https://github.com/jansony1/cn-container-lab # ingress
+https://docs.aws.amazon.com/eks/latest/userguide/cluster-autoscaler.html
+https://docs.aws.amazon.com/eks/latest/userguide/horizontal-pod-autoscaler.html
+https://github.com/aws-samples/eks-workshop-greater-china/blob/master/china/2020_EKS_Launch_Workshop/%E6%AD%A5%E9%AA%A48-%E5%AF%B9%E5%BA%94%E7%94%A8Pod%E5%92%8C%E9%9B%86%E7%BE%A4%E8%BF%9B%E8%A1%8C%E8%87%AA%E5%8A%A8%E6%89%A9%E5%B1%95.md
 ```
